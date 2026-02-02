@@ -1,4 +1,4 @@
-import { StatsigUser } from 'statsig-node';
+import { StatsigUser } from "@statsig/statsig-node-core";
 
 /**
  * Interface representing the supported Statsig user attributes.
@@ -44,13 +44,17 @@ export class TeladocUser {
 
   /**
    * Converts the internal attributes into a format the Statsig SDK expects.
+   * NOW RETURNS A PROPER StatsigUser INSTANCE
    */
   public toStatsig(): StatsigUser {
     if (this.statsigUser) return this.statsigUser;
 
-    // Map internal keys to the explicit naming convention expected by StatsigUser
-    const statsigData: StatsigUser = {
-      userID: this.attributes.userID?.toString(),
+    // Requirement: ID must be a string. fallback to '0' if no identifiers exist.
+    const userID = this.attributes.userID?.toString() || "0";
+
+    // Create a proper StatsigUser instance using the constructor
+    this.statsigUser = new StatsigUser({
+      userID,
       userAgent: this.attributes.userAgent,
       ip: this.attributes.ip,
       country: this.attributes.country,
@@ -59,14 +63,13 @@ export class TeladocUser {
       custom: this.attributes.custom,
       privateAttributes: this.attributes.privateAttributes,
       customIDs: this.attributes.customIDs || {},
-    };
+    });
 
     // Requirement: ID must be a string. fallback to '0' if no identifiers exist.
-    if (!statsigData.userID && !statsigData.customIDs) {
-      statsigData.userID = '0';
+    if (!this.statsigUser.userID && !this.statsigUser.customIDs) {
+      this.statsigUser.userID = '0';
     }
 
-    this.statsigUser = statsigData;
     return this.statsigUser;
   }
 

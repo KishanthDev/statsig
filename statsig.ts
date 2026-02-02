@@ -1,4 +1,4 @@
-import Statsig from "statsig-node";
+import { Statsig, StatsigUser, StatsigOptions } from "@statsig/statsig-node-core";
 import { TeladocUser } from "./teladoc-user";
 import { DataStore } from "./statsig/dataStore";
 
@@ -10,40 +10,40 @@ export interface ITeladocRolloutOptions {
 
 export class TeladocStatsig {
   private defaultUserInstance: TeladocUser | null = null;
-  public ready: Promise<any>;
+  private statsig: Statsig;
 
   constructor(options: ITeladocRolloutOptions, cache?: any) {
-    const statsigOptions: any = {
-      environment: options.environment,
-      localMode: options.localMode || false,
+    const statsigOptions: StatsigOptions = {
+      environment: options.environment?.tier || "production",
+      // localMode is not directly available in new SDK
+      ...(cache && { dataAdapter: new DataStore(cache) }),
     };
 
-    if (cache) {
-      statsigOptions.dataAdapter = new DataStore(cache);
-    }
-
-    this.ready = Statsig.initialize(options.token, statsigOptions);
+    this.statsig = new Statsig(options.token, statsigOptions);
   }
 
   /**
-   * Dynamic Config / Param Store
+   * Initialize the SDK - must be called before using any methods
+   */
+  public async initialize(): Promise<void> {
+    await this.statsig.initialize();
+  }
+
+  /**
+   * Dynamic Config
    * @param configName - The ID of the config in Statsig console
    * @param user - The user object
    * @param parameterKey - (Optional) Specific key to fetch from the config
    */
-  public async getConfig(configName: string, user?: any, parameterKey?: string): Promise<any> {
-    await this.ready;
-
+  public getConfig(configName: string, user?: any, parameterKey?: string): any {
     const sUser = this.getStatsigUser(user);
-    const config = await Statsig.getConfig(sUser, configName);
+    const config = this.statsig.getDynamicConfig(sUser, configName);
 
-    // 🔍 DEBUGGING: Print what Statsig actually returned for this user
     console.log(`[Statsig Debug] Config: ${configName} | User: ${sUser.userID}`);
     console.log(`[Statsig Debug] Full Value:`, config.value);
 
     if (parameterKey) {
-      // If 'config.value' is empty {}, this will safely return null
-      const val = config.get(parameterKey, null);
+      const val = config.getValue(parameterKey, null);
       if (val === null) {
         console.warn(`⚠️ Key '${parameterKey}' not found in config '${configName}'`);
       }
@@ -54,15 +54,44 @@ export class TeladocStatsig {
   }
 
   /**
-   * Feature Gate
+   * Parameter Store
+   * @param paramStoreName - The ID of the parameter store in Statsig console
+   * @param user - The user object
+   * @param parameterKey - (Optional) Specific parameter key to fetch
    */
-  public async checkGate(gateName: string, user?: any): Promise<boolean> {
-    await this.ready;
+  public getParameterStore(paramStoreName: string, user?: any, parameterKey?: string): any {
     const sUser = this.getStatsigUser(user);
-    return Statsig.checkGate(sUser, gateName);
+    const paramStore = this.statsig.getParameterStore(sUser, paramStoreName);
+
+    console.log(`[Statsig Debug] Param Store: ${paramStoreName} | User: ${sUser.userID}`);
+
+    if (parameterKey) {
+      const val = paramStore.getValue(parameterKey, null);
+      if (val === null) {
+        console.warn(`⚠️ Parameter '${parameterKey}' not found in store '${paramStoreName}'`);
+      }
+      return val;
+    }
+
+    return paramStore;
   }
 
-  private getStatsigUser(user?: any) {
+  /**
+   * Feature Gate
+   */
+  public checkGate(gateName: string, user?: any): boolean {
+    const sUser = this.getStatsigUser(user);
+    return this.statsig.checkGate(sUser, gateName);
+  }
+
+  /**
+   * Shutdown the SDK gracefully
+   */
+  public async shutdown(): Promise<void> {
+    await this.statsig.shutdown();
+  }
+
+  private getStatsigUser(user?: any): StatsigUser {
     if (user) {
       return TeladocUser.build(user).toStatsig();
     }

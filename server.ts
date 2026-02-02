@@ -13,55 +13,80 @@ const rollout = new TeladocStatsig({
   environment: { tier: "development" },
 });
 
-/**
- * helper user builder
- * now returns TeladocUser
- */
-function buildUser(req: express.Request): TeladocUser {
-  const userId =
-    typeof req.query.userId === "string" && req.query.userId.length > 0
-      ? req.query.userId
-      : "guest";
+//Initialize before starting server
+(async () => {
+  await rollout.initialize();
+  console.log("✅ Statsig initialized");
 
-  return new TeladocUser({
-    userID: userId,
-    country: (req.query.country as string) ?? "US",
-    custom: {
-      plan: (req.query.plan as string) ?? "free",
-    },
+  /**
+   * helper user builder
+   */
+  function buildUser(req: express.Request): TeladocUser {
+    const userId =
+      typeof req.query.userId === "string" && req.query.userId.length > 0
+        ? req.query.userId
+        : "guest";
+
+    return new TeladocUser({
+      userID: userId,
+      country: (req.query.country as string) ?? "US",
+      custom: {
+        plan: (req.query.plan as string) ?? "free",
+      },
+    });
+  }
+
+  // 1️⃣ Feature Gate (synchronous in new SDK)
+  app.get("/gate/:name", (req, res) => {
+    try {
+      const enabled = rollout.checkGate(req.params.name, buildUser(req));
+      res.json({ enabled });
+    } catch (error) {
+      console.error("Gate error:", error);
+      res.status(500).json({ error: "Failed to check gate" });
+    }
   });
-}
 
-// 1️⃣ Feature Gate
-app.get("/gate/:name", async (req, res) => {
-  const enabled = await rollout.checkGate(req.params.name, buildUser(req));
-  res.json({ enabled });
-});
+  // 2️⃣ Dynamic Config (synchronous in new SDK)
+  app.get("/config/:name", (req, res) => {
+    try {
+      const configName = req.params.name;
+      const specificKey = req.query.key as string | undefined;
+      const user = buildUser(req);
 
-// 2️⃣ Dynamic Config & Param Store
-// Supports: GET /config/ui_settings?key=header_color
-// Supports: GET /config/ui_settings (returns full JSON)
-app.get("/config/:name", async (req, res) => {
-  const configName = req.params.name;
-  
-  // Extract optional key from query params
-  const specificKey = req.query.key as string | undefined; 
-  const user = buildUser(req);
+      const result = rollout.getConfig(configName, user, specificKey);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Config error:", error);
+      res.status(500).json({ error: "Failed to get config" });
+    }
+  });
 
-  // Pass specificKey to our updated method
-  const result = await rollout.getConfig(configName, user, specificKey);
-  
-  res.json(result);
-});
+  // 3️⃣ Parameter Store (synchronous in new SDK)
+  app.get("/params/:name", (req, res) => {
+    try {
+      const paramName = req.params.name;
+      const specificKey = req.query.key as string | undefined;
+      const user = buildUser(req);
+      
+      const value = rollout.getParameterStore(paramName, user, specificKey);
+      
+      res.json({ parameter: paramName, value });
+    } catch (error) {
+      console.error("Parameter Store error:", error);
+      res.status(500).json({ error: "Failed to get parameter" });
+    }
+  });
 
-//
-// 3️⃣ Param Store
-//
-app.get("/params/:key", async (req, res) => {
-  const params = await rollout.getConfig(req.params.key, buildUser(req));
-  res.json(params);
-});
+  // Graceful shutdown
+  process.on("SIGTERM", async () => {
+    console.log("SIGTERM signal received: closing HTTP server");
+    await rollout.shutdown();
+    process.exit(0);
+  });
 
-app.listen(3000, () => {
-  console.log("🚀 http://localhost:3000");
-});
+  app.listen(3000, () => {
+    console.log("🚀 http://localhost:3000");
+  });
+})();

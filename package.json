@@ -11,9 +11,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@statsig/statsig-node-core": "^0.15.0",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "statsig-node": "^6.5.1"
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
