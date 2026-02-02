@@ -4,13 +4,13 @@ import { DataStore } from "./statsig/dataStore";
 
 export interface ITeladocRolloutOptions {
   token: string;
-  environment?: { tier: string }; // ✅ fixed type
+  environment?: { tier: string };
   localMode?: boolean;
 }
 
 export class TeladocStatsig {
   private defaultUserInstance: TeladocUser | null = null;
-  private ready: Promise<any>; // ✅ wait for SDK
+  public ready: Promise<any>;
 
   constructor(options: ITeladocRolloutOptions, cache?: any) {
     const statsigOptions: any = {
@@ -22,18 +22,33 @@ export class TeladocStatsig {
       statsigOptions.dataAdapter = new DataStore(cache);
     }
 
-    // ✅ SAVE promise
     this.ready = Statsig.initialize(options.token, statsigOptions);
   }
 
   /**
-   * Dynamic Config
+   * Dynamic Config / Param Store
+   * @param configName - The ID of the config in Statsig console
+   * @param user - The user object
+   * @param parameterKey - (Optional) Specific key to fetch from the config
    */
-  public async getConfig(configName: string, user?: any): Promise<any> {
-    await this.ready; // ⭐ important
+  public async getConfig(configName: string, user?: any, parameterKey?: string): Promise<any> {
+    await this.ready;
 
     const sUser = this.getStatsigUser(user);
     const config = await Statsig.getConfig(sUser, configName);
+
+    // 🔍 DEBUGGING: Print what Statsig actually returned for this user
+    console.log(`[Statsig Debug] Config: ${configName} | User: ${sUser.userID}`);
+    console.log(`[Statsig Debug] Full Value:`, config.value);
+
+    if (parameterKey) {
+      // If 'config.value' is empty {}, this will safely return null
+      const val = config.get(parameterKey, null);
+      if (val === null) {
+        console.warn(`⚠️ Key '${parameterKey}' not found in config '${configName}'`);
+      }
+      return val;
+    }
 
     return config.value;
   }
@@ -42,8 +57,7 @@ export class TeladocStatsig {
    * Feature Gate
    */
   public async checkGate(gateName: string, user?: any): Promise<boolean> {
-    await this.ready; // ⭐ important
-
+    await this.ready;
     const sUser = this.getStatsigUser(user);
     return Statsig.checkGate(sUser, gateName);
   }
@@ -52,7 +66,6 @@ export class TeladocStatsig {
     if (user) {
       return TeladocUser.build(user).toStatsig();
     }
-
     return this.defaultUser.toStatsig();
   }
 
