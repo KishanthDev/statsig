@@ -21,7 +21,9 @@ app.use(express.json());
 
 const rollout = new TeladocStatsig({
   token,
-  environment: { tier: "development" },
+  environment: {
+    tier: process.env.NODE_ENV || "development"
+  }
 });
 
 /* --------------------------------------------------
@@ -54,8 +56,8 @@ app.get("/gate/:name", (req, res) => {
   try {
     const enabled = rollout.checkGate(req.params.name, buildUser(req));
     res.json({ enabled });
-    } catch (error) {
-      console.error("Gate error:", error);
+  } catch (error) {
+    console.error("Gate error:", error);
     res.status(500).json({ error: "Failed to check gate" });
   }
 });
@@ -67,15 +69,15 @@ app.get("/gate/:name", (req, res) => {
  */
 app.get("/config/:name", (req, res) => {
   try {
-          const configName = req.params.name;
-      const specificKey = req.query.key as string | undefined;
-      const user = buildUser(req);
+    const configName = req.params.name;
+    const specificKey = req.query.key as string | undefined;
+    const user = buildUser(req);
 
-      const result = rollout.getConfig(configName, user, specificKey);
+    const result = rollout.getConfig(configName, user, specificKey);
 
-      res.json(result);
-    } catch (error) {
-      console.error("Config error:", error);
+    res.json(result);
+  } catch (error) {
+    console.error("Config error:", error);
     res.status(500).json({ error: "Failed to get config" });
   }
 });
@@ -87,15 +89,15 @@ app.get("/config/:name", (req, res) => {
  */
 app.get("/params/:name", (req, res) => {
   try {
-      const paramName = req.params.name;
-      const specificKey = req.query.key as string | undefined;
-      const user = buildUser(req);
-      
-      const value = rollout.getParameterStore(paramName, user, specificKey);
+    const paramName = req.params.name;
+    const specificKey = req.query.key as string | undefined;
+    const user = buildUser(req);
 
-      res.json({ parameter: paramName, value });
-    } catch (error) {
-      console.error("Parameter Store error:", error);
+    const value = rollout.getParameterStore(paramName, user, specificKey);
+
+    res.json({ parameter: paramName, value });
+  } catch (error) {
+    console.error("Parameter Store error:", error);
     res.status(500).json({ error: "Failed to get parameter" });
   }
 });
@@ -116,7 +118,7 @@ async function startServer() {
   await rollout.initialize();
   console.log("✅ Statsig initialized");
 
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`🚀 http://localhost:${PORT}`);
   });
